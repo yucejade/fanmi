@@ -15,12 +15,33 @@
  *
  */
 
-#include "ICM42670P.h"
 #include <stdio.h>
-#include <chrono>
-#include <thread>
+#include "ICM42670P.h"
 
-void loop( ICM42670& IMU );
+uint8_t irq_received = 0;
+ICM42670 IMU;
+
+void event_cb( inv_imu_sensor_event_t* evt )
+{
+    // Format data for Serial Plotter
+    if ( IMU.isAccelDataValid( evt ) && IMU.isGyroDataValid( evt ) )
+    {
+        // Format data for Serial Plotter
+        printf( "AccelX:%f,", evt->accel[ 0 ] / 2048.0);
+        printf( "AccelY:%f,", evt->accel[ 1 ] / 2048.0);
+        printf( "AccelZ:%f,", evt->accel[ 2 ] / 2048.0);
+        printf( "GyroX:%f,", evt->gyro[ 0 ] / 16.4);
+        printf( "GyroY:%f,", evt->gyro[ 1 ] / 16.4);
+        printf( "GyroZ:%f,", evt->gyro[ 2 ] / 16.4);
+        printf( "Temperature:%d", evt->temperature );
+        printf( "\n" );
+    }
+}
+
+void irq_handler( void )
+{
+    IMU.getDataFromFifo( event_cb );
+}
 
 int main( int argc, char* argv[] )
 {
@@ -35,37 +56,10 @@ int main( int argc, char* argv[] )
         return -1;
     }
 
+    // Enable interrupt on pin 2, Fifo watermark=10
+    IMU.enableFifoInterrupt( 2, irq_handler, 10 );
     // Accel ODR = 100 Hz and Full Scale Range = 16G
     IMU.startAccel( 100, 16 );
     // Gyro ODR = 100 Hz and Full Scale Range = 2000 dps
     IMU.startGyro( 100, 2000 );
-    // Wait IMU to start
-    std::this_thread::sleep_for( std::chrono::milliseconds( 100 ) );
-
-    while ( true )
-        loop( IMU );
-
-    return 0;
-}
-
-void loop( ICM42670& IMU )
-{
-
-    inv_imu_sensor_event_t imu_event;
-
-    // Get last event
-    IMU.getDataFromRegisters( imu_event );
-
-    // Format data for Serial Plotter
-    printf( "AccelX:%f,", imu_event.accel[ 0 ] / 2048.0);
-    printf( "AccelY:%f,", imu_event.accel[ 1 ] / 2048.0);
-    printf( "AccelZ:%f,", imu_event.accel[ 2 ] / 2048.0);
-    printf( "GyroX:%f,", imu_event.gyro[ 0 ] / 16.4);
-    printf( "GyroY:%f,", imu_event.gyro[ 1 ] / 16.4);
-    printf( "GyroZ:%f,", imu_event.gyro[ 2 ] / 16.4);
-    printf( "Temperature:%d", imu_event.temperature );
-    printf( "\n" );
-
-    // Run @ ODR 100Hz
-    std::this_thread::sleep_for( std::chrono::milliseconds( 10 ) );
 }

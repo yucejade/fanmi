@@ -1,3 +1,19 @@
 {
-    "cmake.sourceDirectory": "/home/kevin/yuce/icm42670/motion.arduino.ICM42670P-main/src"
+    "cmake.sourceDirectory": "/home/kevin/yuce/icm42670/motion.arduino.ICM42670P-main/src",
+    "files.associations": {
+        "array": "cpp",
+        "compare": "cpp",
+        "functional": "cpp",
+        "ratio": "cpp",
+        "tuple": "cpp",
+        "type_traits": "cpp",
+        "utility": "cpp",
+        "thread": "cpp",
+        "deque": "cpp",
+        "string": "cpp",
+        "unordered_map": "cpp",
+        "vector": "cpp",
+        "string_view": "cpp",
+        "initializer_list": "cpp"
+    }
 }

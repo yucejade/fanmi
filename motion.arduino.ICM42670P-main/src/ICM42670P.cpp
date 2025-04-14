@@ -20,6 +20,7 @@
  #include <fcntl.h>
  #include <unistd.h>
  #include <sys/ioctl.h>
+ #include <thread>
  #include <linux/i2c-dev.h>
  #include <linux/spi/spidev.h>
  #include <gpiod.h>
@@ -88,7 +89,7 @@ bool ICM42670::open_i2c_device(const char* i2c_device, uint8_t address, uint32_t
 }
 
 void ICM42670::close_i2c_device() {
-  if (i2c_fd >= 0) {
+  if (!which_use) {
     close(i2c_fd);
   }
 }
@@ -101,14 +102,15 @@ void ICM42670::close_spi_device() {
 }
 
 /* starts communication with the ICM42670 */
-int ICM42670::begin() {
+int ICM42670::begin(bool type) {
   struct inv_imu_serif icm_serif;
   int rc = 0;
   uint8_t who_am_i;
   inv_imu_int1_pin_config_t int1_pin_config;
 
-  if (i2c_fd >= 0) {
-    if (false == open_i2c_device("/dev/i2c-1", 0x68, -1)) {
+  which_use = type;
+  if (!which_use) {
+    if (false == open_i2c_device("/dev/i2c-1", ICM42670_I2C_ADDRESS, -1)) {
       return -4;
     }
     icm_serif.serif_type = UI_I2C;
@@ -213,7 +215,7 @@ void ICM42670::enableInterrupt(uint8_t intpin, ICM42670_irq_handler handler)
   }
 
   // 启动中断监听线程
-  //std::thread([this, handler]() {
+  std::thread([this, handler]() {
     while (true) {
       struct timespec ts = { 5, 0 }; // 5秒超时
       int ret = gpiod_line_event_wait(int_line, &ts);
@@ -227,7 +229,7 @@ void ICM42670::enableInterrupt(uint8_t intpin, ICM42670_irq_handler handler)
       // 触发中断处理
       handler();
     }
-  //}).detach();
+  }).detach();
 }
 
 int ICM42670::enableFifoInterrupt(uint8_t intpin, ICM42670_irq_handler handler, uint8_t fifo_watermark) {
