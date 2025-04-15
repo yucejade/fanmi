@@ -8,6 +8,7 @@
             "type": "lldb",
             "request": "launch",
             "name": "Debug Sevice",
+            "program_bak": "${workspaceFolder}/build/package/bin/FIFO_Interrupt",
             "program": "${workspaceFolder}/build/package/bin/Polling_I2C",
             "args": [],
             "cwd": "${workspaceFolder}",

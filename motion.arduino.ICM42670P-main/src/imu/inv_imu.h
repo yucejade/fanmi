@@ -35,7 +35,7 @@ extern "C" {
 
 /* Device description */
 #define INV_IMU_STRING_ID         "ICM42670P"
-#define INV_IMU_WHOAMI            0x60
+#define INV_IMU_WHOAMI            0x67
 #define INV_IMU_REV               INV_IMU_REV_A
 #define INV_IMU_IS_GYRO_SUPPORTED 1
 #define INV_IMU_HFSR_SUPPORTED    0

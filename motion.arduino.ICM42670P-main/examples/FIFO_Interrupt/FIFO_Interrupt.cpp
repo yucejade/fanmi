@@ -33,7 +33,7 @@ void event_cb( inv_imu_sensor_event_t* evt )
         printf( "GyroX:%f,", evt->gyro[ 0 ] / 16.4);
         printf( "GyroY:%f,", evt->gyro[ 1 ] / 16.4);
         printf( "GyroZ:%f,", evt->gyro[ 2 ] / 16.4);
-        printf( "Temperature:%d", evt->temperature );
+        printf( "Temperature:%f", (evt->temperature / 128.0) + 25.0);
         printf( "\n" );
     }
 }
@@ -56,8 +56,8 @@ int main( int argc, char* argv[] )
         return -1;
     }
 
-    // Enable interrupt on pin 2, Fifo watermark=10
-    IMU.enableFifoInterrupt( 2, irq_handler, 10 );
+    // Enable interrupt on pin 4, Fifo watermark=10
+    IMU.enableFifoInterrupt( 4, irq_handler, 10 );
     // Accel ODR = 100 Hz and Full Scale Range = 16G
     IMU.startAccel( 100, 16 );
     // Gyro ODR = 100 Hz and Full Scale Range = 2000 dps

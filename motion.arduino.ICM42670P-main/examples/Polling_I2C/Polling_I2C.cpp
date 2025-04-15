@@ -63,7 +63,7 @@ void loop( ICM42670& IMU )
     printf( "GyroX:%f,", imu_event.gyro[ 0 ] / 16.4);
     printf( "GyroY:%f,", imu_event.gyro[ 1 ] / 16.4);
     printf( "GyroZ:%f,", imu_event.gyro[ 2 ] / 16.4);
-    printf( "Temperature:%d", imu_event.temperature );
+    printf( "Temperature:%f", (imu_event.temperature / 128.0) + 25.0);
     printf( "\n" );
 
     // Run @ ODR 100Hz

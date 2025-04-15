@@ -22,4 +22,4 @@ ENDIF()
 
 ADD_SUBDIRECTORY(src)
 ADD_SUBDIRECTORY(examples/Polling_I2C)
-# ADD_SUBDIRECTORY(examples/FIFO_Interrupt)
+ADD_SUBDIRECTORY(examples/FIFO_Interrupt)
