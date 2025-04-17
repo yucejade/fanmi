@@ -60,6 +60,12 @@ ICM42670::~ICM42670() {
   } else {
     close_spi_device();
   }
+  if (int_line) {
+    gpiod_line_release(int_line);
+  }
+  if (gpio_chip) {
+    gpiod_chip_close(gpio_chip);
+  }
 }
 
 bool ICM42670::open_i2c_device(const char* i2c_device, uint8_t address, uint32_t freq) {
@@ -224,7 +230,14 @@ void ICM42670::enableInterrupt(uint8_t intpin, ICM42670_irq_handler handler)
       } else if (ret == 0) {
         continue; // 超时
       }
-        
+      
+      /* 传感器中断引脚可能因噪声触发多次虚假中断，此处软件层面添加去抖动（Debounce）逻辑*/
+      auto now = std::chrono::steady_clock::now();
+      if (now - last_interrupt_time < std::chrono::milliseconds(10)) {
+        continue;
+      }
+      last_interrupt_time = now;
+
       // 触发中断处理
       handler();
     }
@@ -440,7 +453,7 @@ static int i2c_write(inv_imu_serif* serif, uint8_t reg, const uint8_t * wbuffer,
     memcpy(buffer + 1, wbuffer, wlen);
     
     if (write(obj->i2c_fd, buffer, wlen + 1) != (ssize_t)(wlen + 1)) {
-        //TODO:perror("I2C write failed");
+        perror("I2C write failed");
         return -1;
     }
     return 0;
@@ -450,7 +463,7 @@ static int i2c_read(inv_imu_serif* serif, uint8_t reg, uint8_t * rbuffer, uint32
     ICM42670* obj = (ICM42670*)serif->context;
     
     if (write(obj->i2c_fd, &reg, 1) != 1) {
-        //TODO:perror("I2C reg select failed");
+        perror("I2C reg select failed");
         return -1;
     }
     

@@ -55,8 +55,8 @@ int main( int argc, char* argv[] )
         return -1;
     }
 
-    // Enable interrupt on pin 17, Fifo watermark=50
-    IMU.enableFifoInterrupt( 17, irq_handler, 50 );
+    // Enable interrupt on pin 17, Fifo watermark=10
+    IMU.enableFifoInterrupt( 17, irq_handler, 10 );
     // Accel ODR = 100 Hz and Full Scale Range = 16G
     IMU.startAccel( 100, 16 );
     // Gyro ODR = 100 Hz and Full Scale Range = 2000 dps
