@@ -20,7 +20,6 @@
  #include <fcntl.h>
  #include <unistd.h>
  #include <sys/ioctl.h>
- #include <thread>
  #include <linux/i2c-dev.h>
  #include <linux/spi/spidev.h>
  #include <gpiod.h>
@@ -207,7 +206,7 @@ void ICM42670::enableInterrupt(uint8_t intpin, ICM42670_irq_handler handler)
   }
 
   // 配置为输入，上升沿触发
-  if (gpiod_line_request_rising_edge_events(int_line, "ICM42670") < 0) {
+  if (gpiod_line_request_rising_edge_events(int_line, "ICM42670_INT") < 0) {
     perror("Request interrupt failed");
     gpiod_line_release(int_line);
     gpiod_chip_close(gpio_chip);
@@ -215,7 +214,7 @@ void ICM42670::enableInterrupt(uint8_t intpin, ICM42670_irq_handler handler)
   }
 
   // 启动中断监听线程
-  std::thread([this, handler]() {
+  std::thread t([this, handler]() {
     while (true) {
       struct timespec ts = { 5, 0 }; // 5秒超时
       int ret = gpiod_line_event_wait(int_line, &ts);
@@ -229,7 +228,9 @@ void ICM42670::enableInterrupt(uint8_t intpin, ICM42670_irq_handler handler)
       // 触发中断处理
       handler();
     }
-  }).detach();
+  });
+
+  monitor = std::move(t);
 }
 
 int ICM42670::enableFifoInterrupt(uint8_t intpin, ICM42670_irq_handler handler, uint8_t fifo_watermark) {
@@ -439,7 +440,7 @@ static int i2c_write(inv_imu_serif* serif, uint8_t reg, const uint8_t * wbuffer,
     memcpy(buffer + 1, wbuffer, wlen);
     
     if (write(obj->i2c_fd, buffer, wlen + 1) != (ssize_t)(wlen + 1)) {
-        perror("I2C write failed");
+        //TODO:perror("I2C write failed");
         return -1;
     }
     return 0;
@@ -449,7 +450,7 @@ static int i2c_read(inv_imu_serif* serif, uint8_t reg, uint8_t * rbuffer, uint32
     ICM42670* obj = (ICM42670*)serif->context;
     
     if (write(obj->i2c_fd, &reg, 1) != 1) {
-        perror("I2C reg select failed");
+        //TODO:perror("I2C reg select failed");
         return -1;
     }
     

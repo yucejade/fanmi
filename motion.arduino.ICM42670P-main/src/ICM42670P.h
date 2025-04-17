@@ -18,6 +18,7 @@
 #ifndef ICM42670_H
 #define ICM42670_H
 
+#include <thread>
 extern "C" {
 #include "imu/inv_imu_driver.h"
 #include <stddef.h>
@@ -60,6 +61,7 @@ public:
     struct gpiod_chip* gpio_chip   = NULL;
     struct gpiod_line* int_line    = NULL;
     uint8_t            int_status3 = 0;
+    std::thread        monitor;
 protected:
     struct inv_imu_device         icm_driver;
     inv_imu_interrupt_parameter_t int1_config;

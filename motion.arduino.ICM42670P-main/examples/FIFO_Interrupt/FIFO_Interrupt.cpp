@@ -45,7 +45,6 @@ void irq_handler( void )
 
 int main( int argc, char* argv[] )
 {
-    ICM42670 IMU;
     int      ret;
 
     // Initializing the ICM42670
@@ -56,10 +55,12 @@ int main( int argc, char* argv[] )
         return -1;
     }
 
-    // Enable interrupt on pin 4, Fifo watermark=10
-    IMU.enableFifoInterrupt( 4, irq_handler, 10 );
+    // Enable interrupt on pin 17, Fifo watermark=50
+    IMU.enableFifoInterrupt( 17, irq_handler, 50 );
     // Accel ODR = 100 Hz and Full Scale Range = 16G
     IMU.startAccel( 100, 16 );
     // Gyro ODR = 100 Hz and Full Scale Range = 2000 dps
     IMU.startGyro( 100, 2000 );
+
+    IMU.monitor.join();
 }
