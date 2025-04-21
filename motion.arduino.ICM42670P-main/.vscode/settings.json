@@ -14,6 +14,9 @@
         "unordered_map": "cpp",
         "vector": "cpp",
         "string_view": "cpp",
-        "initializer_list": "cpp"
+        "initializer_list": "cpp",
+        "chrono": "cpp",
+        "inv_imu_selftest.h": "c",
+        "inv_imu_extfunc.h": "c"
     }
 }

@@ -26,6 +26,7 @@
  #include <time.h>
  
 #include "ICM42670P.h"
+#include "imu/inv_imu_selftest.h"
 #include "imu/inv_imu_apex.h"
 
 static int i2c_write(inv_imu_serif* serif, uint8_t reg, const uint8_t * wbuffer, uint32_t wlen);
@@ -191,7 +192,6 @@ int ICM42670::getDataFromRegisters(inv_imu_sensor_event_t& evt) {
   return inv_imu_get_data_from_registers(&icm_driver);
 }
 
-
 void ICM42670::enableInterrupt(uint8_t intpin, ICM42670_irq_handler handler)
 {
   if (!handler) return;
@@ -283,6 +283,38 @@ bool ICM42670::isAccelDataValid(inv_imu_sensor_event_t *evt) {
 
 bool ICM42670::isGyroDataValid(inv_imu_sensor_event_t *evt) {
   return (evt->sensor_mask & (1<<INV_SENSOR_GYRO));
+}
+
+int ICM42670::run_self_test(void)
+{
+	inv_imu_selftest_output_t     out;
+	inv_imu_selftest_parameters_t params;
+	int                           rc   = INV_ERROR_SUCCESS;
+
+	rc |= inv_imu_init_selftest_parameters_struct(&icm_driver, &params);
+	/* Update `params` if needed here */
+
+	rc |= inv_imu_run_selftest(&icm_driver, params, &out);
+
+	if (rc != INV_ERROR_SUCCESS) {
+    rc |= INV_ERROR;
+	} else {
+		/* Print self-test status */
+		if (out.accel_status != 1) {
+			rc |= INV_ERROR;
+		}
+
+		if (out.gyro_status != 1) {
+			rc |= INV_ERROR;
+		}
+
+		/* Check incomplete state */
+		if (out.gyro_status & 0x2) {
+			rc |= INV_ERROR;
+		}
+	}
+
+	return rc;
 }
 
 int ICM42670::initApex(uint8_t intpin, ICM42670_irq_handler handler)

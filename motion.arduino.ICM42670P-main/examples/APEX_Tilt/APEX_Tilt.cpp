@@ -15,32 +15,17 @@
  *
  */
 
-#include <stdio.h>
 #include "ICM42670P.h"
+#include <chrono>
+#include <stdio.h>
+#include <thread>
 
-uint8_t irq_received = 0;
 ICM42670 IMU;
-
-void event_cb( inv_imu_sensor_event_t* evt )
-{
-    // Format data for Serial Plotter
-    if ( IMU.isAccelDataValid( evt ) && IMU.isGyroDataValid( evt ) )
-    {
-        // Format data for Serial Plotter
-        printf( "AccelX:%f,", evt->accel[ 0 ] / 2048.0);
-        printf( "AccelY:%f,", evt->accel[ 1 ] / 2048.0);
-        printf( "AccelZ:%f,", evt->accel[ 2 ] / 2048.0);
-        printf( "GyroX:%f,", evt->gyro[ 0 ] / 16.4);
-        printf( "GyroY:%f,", evt->gyro[ 1 ] / 16.4);
-        printf( "GyroZ:%f,", evt->gyro[ 2 ] / 16.4);
-        printf( "Temperature:%f", (evt->temperature / 128.0) + 25.0);
-        printf( "\n" );
-    }
-}
 
 void irq_handler( void )
 {
-    IMU.getDataFromFifo( event_cb );
+    if (IMU.getTilt())
+        printf( "TILT:%s\n", "true");
 }
 
 int main( int argc, char* argv[] )
@@ -55,12 +40,8 @@ int main( int argc, char* argv[] )
         return -1;
     }
 
-    // Enable interrupt on pin 17, Fifo watermark=10
-    IMU.enableFifoInterrupt( 17, irq_handler, 10 );
-    // Accel ODR = 100 Hz and Full Scale Range = 16G
-    IMU.startAccel( 100, 16 );
-    // Gyro ODR = 100 Hz and Full Scale Range = 2000 dps
-    IMU.startGyro( 100, 2000 );
+    // Accel ODR = 50 Hz and APEX Tilt enabled
+    IMU.startTiltDetection( 17, irq_handler );
 
     IMU.monitor.join();
     return 0;

@@ -51,6 +51,7 @@ public:
     int  startWakeOnMotion( uint8_t intpin, ICM42670_irq_handler handler );
     int  updateApex( void );
     void enableInterrupt( uint8_t intpin, ICM42670_irq_handler handler );
+    int  run_self_test(void);
 
     bool    which_use   = false;  // false:i2c，true:spi
     uint8_t i2c_address = 0;
