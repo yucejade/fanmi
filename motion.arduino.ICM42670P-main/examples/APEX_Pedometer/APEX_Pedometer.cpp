@@ -22,37 +22,23 @@
 
 ICM42670 IMU;
 
-void loop( ICM42670& IMU )
-{
-
-    inv_imu_sensor_event_t imu_event;
-
-    // Get last event
-    IMU.getDataFromRegisters( imu_event );
-
-    // Format data for Serial Plotter
-    printf( "AccelX:%f,", imu_event.accel[ 0 ] / 2048.0);
-    printf( "AccelY:%f,", imu_event.accel[ 1 ] / 2048.0);
-    printf( "AccelZ:%f,", imu_event.accel[ 2 ] / 2048.0);
-    printf( "GyroX:%f,", imu_event.gyro[ 0 ] / 16.4);
-    printf( "GyroY:%f,", imu_event.gyro[ 1 ] / 16.4);
-    printf( "GyroZ:%f,", imu_event.gyro[ 2 ] / 16.4);
-    printf( "Temperature:%f", (imu_event.temperature / 128.0) + 25.0);
-    printf( "\n" );
-
-    // Run @ ODR 100Hz
-    std::this_thread::sleep_for( std::chrono::milliseconds( 10 ) );
-}
-
 void irq_handler( void )
 {
-    if (IMU.getTilt())
-        printf( "TILT:%s\n", "true");
+    uint32_t    step_count   = 0;
+    float       step_cadence = 0;
+    const char* activity     = nullptr;
+
+    if ( 0 == IMU.getPedometer( step_count, step_cadence, activity ) )
+    {
+        printf( "Step count:%d\n", step_count );
+        printf( "Step cadence:%f(steps/sec)\n", step_cadence );
+        printf( "activity:%s\n", activity ? activity : "" );
+    }
 }
 
 int main( int argc, char* argv[] )
 {
-    int      ret;
+    int ret;
 
     // Initializing the ICM42670
     ret = IMU.begin();
@@ -62,13 +48,9 @@ int main( int argc, char* argv[] )
         return -1;
     }
 
-    // Accel ODR = 50 Hz and APEX Tilt enabled
-    IMU.startTiltDetection( 17, irq_handler );
-    IMU.monitor.detach();
-    
-    while ( true )
-        loop( IMU );
+    // Accel ODR = 50 Hz and APEX Pedometer enabled
+    IMU.startPedometer( 17, irq_handler );
 
-    //IMU.monitor.join();
+    IMU.monitor.join();
     return 0;
 }

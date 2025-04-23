@@ -20,39 +20,21 @@
 #include <stdio.h>
 #include <thread>
 
-ICM42670 IMU;
-
-void loop( ICM42670& IMU )
-{
-
-    inv_imu_sensor_event_t imu_event;
-
-    // Get last event
-    IMU.getDataFromRegisters( imu_event );
-
-    // Format data for Serial Plotter
-    printf( "AccelX:%f,", imu_event.accel[ 0 ] / 2048.0);
-    printf( "AccelY:%f,", imu_event.accel[ 1 ] / 2048.0);
-    printf( "AccelZ:%f,", imu_event.accel[ 2 ] / 2048.0);
-    printf( "GyroX:%f,", imu_event.gyro[ 0 ] / 16.4);
-    printf( "GyroY:%f,", imu_event.gyro[ 1 ] / 16.4);
-    printf( "GyroZ:%f,", imu_event.gyro[ 2 ] / 16.4);
-    printf( "Temperature:%f", (imu_event.temperature / 128.0) + 25.0);
-    printf( "\n" );
-
-    // Run @ ODR 100Hz
-    std::this_thread::sleep_for( std::chrono::milliseconds( 10 ) );
-}
+ICM42670      IMU;
+volatile bool wake_up = false;
 
 void irq_handler( void )
 {
-    if (IMU.getTilt())
-        printf( "TILT:%s\n", "true");
+    wake_up = true;
+    printf( "Wake-up\n" );
+    std::this_thread::sleep_for( std::chrono::milliseconds( 2000 ) );
+    wake_up = false;
+    printf( "Going to sleep\n" );
 }
 
 int main( int argc, char* argv[] )
 {
-    int      ret;
+    int ret;
 
     // Initializing the ICM42670
     ret = IMU.begin();
@@ -62,13 +44,9 @@ int main( int argc, char* argv[] )
         return -1;
     }
 
-    // Accel ODR = 50 Hz and APEX Tilt enabled
-    IMU.startTiltDetection( 17, irq_handler );
-    IMU.monitor.detach();
-    
-    while ( true )
-        loop( IMU );
+    // APEX WoM enabled, irq on pin 17
+    IMU.startWakeOnMotion( 17, irq_handler );
 
-    //IMU.monitor.join();
+    IMU.monitor.join();
     return 0;
 }
