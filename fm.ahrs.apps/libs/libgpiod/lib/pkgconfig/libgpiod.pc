@@ -1,0 +1,11 @@
+prefix=/home/kevin/Dev/src/libgpiod-1.6.3/fminstall
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: libgpiod
+Description: Library and tools for the Linux GPIO chardev
+URL: 
+Version: 1.6.3
+Libs: -L${libdir} -lgpiod
+Cflags: -I${includedir}

@@ -1,0 +1,19 @@
+# Copyright (c) 2008-2023 the Urho3D project
+# License: MIT
+
+prefix=/home/kevin/Dev/src/urho3d/install
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib/Urho3D
+includedir=${prefix}/include
+
+# Additional Cflags for various build configurations, which can be accessed as normal pkg-config variable using '--variable' option
+CFLAGS_DEBUG=-g -DDEBUG -D_DEBUG
+CFLAGS_RELEASE=-O3 -DNDEBUG
+CFLAGS_RELWITHDEBINFO=-O2 -g -DNDEBUG
+
+Name: Urho3D
+Description: Urho3D is a free lightweight, cross-platform 2D and 3D game engine implemented in C++ and released under the MIT license. Greatly inspired by OGRE (http://www.ogre3d.org) and Horde3D (http://www.horde3d.org).
+Version: 1.8-ALPHA.948
+URL: https://github.com/urho3d/Urho3D
+Libs:   -L"${libdir}" -lUrho3D -ldl -lm -lrt -lGLESv1_CM -lGLESv2
+Cflags: -DURHO3D_STATIC_DEFINE -DURHO3D_ANGELSCRIPT -DURHO3D_FILEWATCHER -DURHO3D_IK -DURHO3D_LOGGING -DURHO3D_NAVIGATION -DURHO3D_NETWORK -DURHO3D_PHYSICS -DURHO3D_PHYSICS2D -DURHO3D_PROFILING -DURHO3D_THREADING -DURHO3D_URHO2D -DURHO3D_WEBP -DGENERIC_ARM -DHAVE_STDINT_H -Wno-invalid-offsetof  -fsigned-char -pipe -march=armv8-a -pthread -fdiagnostics-color=auto -Winvalid-pch  -I"${includedir}" -I"${includedir}/Urho3D/ThirdParty" -I"${includedir}/Urho3D/ThirdParty/Bullet"
