@@ -20,17 +20,39 @@
  * OF THE SOFTWARE.
  * ________________________________________________________________________________________________________
  */
-
-#include "example_algo.h"
-#include "imu/inv_imu_driver.h"
+#include <stdio.h>
+#include <memory.h>
 #include <math.h>
 #include <stddef.h>
-
-#define RAD_TO_DEG( rad ) ( ( float )rad * 57.2957795131 )
+#include "example_algo.h"
+#include "imu/inv_imu_driver.h"
+#include "Fusion.h"
 
 /* --------------------------------------------------------------------------------------
  *  Static and extern variables
  * -------------------------------------------------------------------------------------- */
+
+/** AGM input structure */
+typedef struct {
+	int32_t mask;          /**< Mask to specify updated inputs */
+	int64_t sRimu_time_us; /**< Accel and Gyro timestamp in us. Use 0 if not available. */
+	int32_t sRacc_data[3]; /**< Raw accel coded over 20 bits (FSR g = 1 << 19 LSB) */
+	int32_t sRgyr_data[3]; /**< Raw gyro coded over 20 bits (FSR dps = 1 << 19 LSB) */
+	int16_t sRtemp_data;   /**< Raw temperature */
+	int32_t sRmag_data[3]; /**< Raw mag */
+	int64_t sRmag_time_us; /**< Mag timestamp in us. Use 0 if not available. */
+} FMAGMInput;
+
+typedef struct {
+    FusionQuaternion quaternion;
+}FMAGMOutput;
+
+/* Bias previously stored in flash */
+typedef struct sensor_biases
+{
+    int32_t bias_q16[ 3 ];
+    uint8_t is_saved;
+} sensor_biases_t;
 
 /*
  * Printing period (prevent terminal overload)
@@ -44,22 +66,6 @@ static int print_period_us = PRINTING_PERIOD_MS * 1000; /* 1 s */
 
 /* IMU driver object */
 static struct inv_imu_device icm_driver;
-
-/*
- * IMU mounting matrix
- * Coefficients are coded as Q30 integer.
- * For DK:      For EVB:     For DB:
- *  1  0  0      0  1  0      0 -1  0
- *  0  1  0     -1  0  0      1  0  0
- *  0  0  1      0  0  1      0  0  1
- */
-#if defined( USE_EVB )
-static int32_t icm_matrix[ 9 ] = { 0, ( 1 << 30 ), 0, -( 1 << 30 ), 0, 0, 0, 0, ( 1 << 30 ) }; /* for EVB */
-#elif defined( USE_DB )
-static int32_t icm_matrix[ 9 ] = { 0, -( 1 << 30 ), 0, ( 1 << 30 ), 0, 0, 0, 0, ( 1 << 30 ) }; /* for DB */
-#else
-static int32_t icm_matrix[ 9 ] = { ( 1 << 30 ), 0, 0, 0, ( 1 << 30 ), 0, 0, 0, ( 1 << 30 ) }; /* for DK */
-#endif
 
 /* Full Scale Range */
 #if IS_HIGH_RES_MODE
@@ -79,15 +85,6 @@ static const int32_t gyr_fsr = 2000; /* 2000 dps */
 /* Ist-8306 driver object */
 static inv_ist8306_t ist_driver;
 
-/*
- * Mag mounting matrix (in Q30)
- * Mag as DB:
- *  0  1  0
- * -1  0  0
- *  0  0  1
- */
-static int32_t mag_matrix[ 9 ] = { 0, ( 1 << 30 ), 0, -( 1 << 30 ), 0, 0, 0, 0, ( 1 << 30 ) };
-
 /* Mag's timestamp (defined in main.c) */
 extern volatile uint64_t timestamp_mag;
 
@@ -95,17 +92,13 @@ extern volatile uint64_t timestamp_mag;
 extern int mag_init_successful;
 #endif
 
-static InvnAlgoAGMInput  input;
-static InvnAlgoAGMOutput output;
+static FMAGMInput  input;
+static FMAGMOutput output;
 
 /* Accelerometer gyroscope and magnetometer biases */
 static int32_t acc_bias[ 3 ];
 static int32_t gyr_bias[ 3 ];
 static int32_t mag_bias[ 3 ];
-/* Accelerometer gyroscope and magnetometer accuracies */
-static int32_t acc_accuracy;
-static int32_t gyr_accuracy;
-static int32_t mag_accuracy;
 
 /*
  * Defines
@@ -128,35 +121,21 @@ static int32_t mag_accuracy;
  */
 uint32_t data_to_print = MASK_PRINT_ACC_DATA | MASK_PRINT_GYR_DATA | MASK_PRINT_MAG_DATA | MASK_PRINT_6AXIS_DATA | MASK_PRINT_9AXIS_DATA;
 
-/* Bias previously stored in flash */
-typedef struct sensor_biases
-{
-    int32_t bias_q16[ 3 ];
-    uint8_t is_saved;
-} sensor_biases_t;
-
-/* Algorithm structure */
-static InvnAlgoAGMStruct agm;
-
 /* --------------------------------------------------------------------------------------
  *  static function declaration
  * -------------------------------------------------------------------------------------- */
 /* biases storage */
-static int  retrieve_stored_biases_from_db( int32_t acc_bias_q16[ 3 ], int32_t gyr_bias_q16[ 3 ], int32_t mag_bias_q16[ 3 ] );
-static void store_biases_in_db( const int32_t acc_bias_q16[ 3 ], const int32_t gyr_bias_q16[ 3 ], const int32_t mag_bias_q16[ 3 ] );
+static int  retrieve_biases( int32_t acc_bias[ 3 ], int32_t gyr_bias[ 3 ], int32_t mag_bias[ 3 ] );
 static void store_biases( void );
 
 #if ! IS_HIGH_RES_MODE
 static int gyro_fsr_dps_to_bitfield( int32_t fsr );
 static int accel_fsr_g_to_bitfield( int32_t fsr );
 #endif
-static void apply_mounting_matrix( const int32_t matrix[ 9 ], int32_t raw[ 3 ] );
-uint32_t bitfield_to_us( uint32_t odr_bitfield );
-void print_data( uint64_t time, const InvnAlgoAGMInput* input, const InvnAlgoAGMOutput* output );
-void print_inputs( uint64_t time, const InvnAlgoAGMInput* input );
-void print_outputs( uint64_t time, const InvnAlgoAGMOutput* output );
-void fixedpoint_to_float( const int32_t* in, float* out, const uint8_t fxp_shift, const uint8_t dim );
-void quaternions_to_angles( const float quat[ 4 ], float angles[ 3 ] );
+static void print_data( uint64_t time, const FMAGMInput* input, const InvnAlgoAGMOutput* output );
+static void print_inputs( uint64_t time, const FMAGMInput* input );
+static void print_outputs( uint64_t time, const InvnAlgoAGMOutput* output );
+static void fixedpoint_to_float( const int32_t* in, float* out, const uint8_t fxp_shift, const uint8_t dim );
 
 /* --------------------------------------------------------------------------------------
  *  Functions definition
@@ -278,9 +257,6 @@ int reset_agm_biases( void )
     memset( acc_bias, 0, sizeof( acc_bias ) );
     memset( gyr_bias, 0, sizeof( gyr_bias ) );
     memset( mag_bias, 0, sizeof( mag_bias ) );
-    acc_accuracy = 0;
-    gyr_accuracy = 0;
-    mag_accuracy = 0;
 
     return 0;
 }
@@ -291,16 +267,12 @@ int reset_agm_biases( void )
 int init_agm_biases( void )
 {
     /* Retrieve stored biases */
-    if ( retrieve_stored_biases_from_db( acc_bias, gyr_bias, mag_bias ) == 0 )
+    if ( retrieve_biases( acc_bias, gyr_bias, mag_bias ) == 0 )
     {
         printf( "   Biases loaded from flash:\n" );
         printf( "    - Accel: [%f %f %f]g\n", ( float )acc_bias[ 0 ] / ( 1 << 16 ), ( float )acc_bias[ 1 ] / ( 1 << 16 ), ( float )acc_bias[ 2 ] / ( 1 << 16 ) );
         printf( "    - Gyro:  [%f %f %f]dps\n", ( float )gyr_bias[ 0 ] / ( 1 << 16 ), ( float )gyr_bias[ 1 ] / ( 1 << 16 ), ( float )gyr_bias[ 2 ] / ( 1 << 16 ) );
         printf( "    - Mag:   [%f %f %f]uT\n", ( float )mag_bias[ 0 ] / ( 1 << 16 ), ( float )mag_bias[ 1 ] / ( 1 << 16 ), ( float )mag_bias[ 2 ] / ( 1 << 16 ) );
-
-        acc_accuracy = 3;
-        gyr_accuracy = 2;
-        mag_accuracy = 1;
     }
     else
     {
@@ -308,9 +280,6 @@ int init_agm_biases( void )
         memset( acc_bias, 0, sizeof( acc_bias ) );
         memset( gyr_bias, 0, sizeof( gyr_bias ) );
         memset( mag_bias, 0, sizeof( mag_bias ) );
-        acc_accuracy = 0;
-        gyr_accuracy = 0;
-        mag_accuracy = 0;
     }
 
     return 0;
@@ -318,49 +287,7 @@ int init_agm_biases( void )
 
 int init_agm_algo( void )
 {
-    int               rc = 0;
-    InvnAlgoAGMConfig config;
-
-    memset( &input, 0, sizeof( input ) );
-    memset( &output, 0, sizeof( output ) );
-    memset( &config, 0, sizeof( config ) );
-
-    rc |= invn_algo_agm_generate_config( &config, INVN_ALGO_AGM_MOBILE );
-
-    /* FSR configurations */
-    config.acc_fsr = acc_fsr;
-    config.gyr_fsr = gyr_fsr;
-
-    config.acc_odr_us = bitfield_to_us( ACCEL_FREQ );
-    config.gyr_odr_us = bitfield_to_us( GYRO_FREQ );
-
-    /* Temperature sensor configuration */
-#if IS_HIGH_RES_MODE
-    config.temp_sensitivity = ( 1 << 30 ) / 128;  // high-res;
-    config.temp_offset      = 25 << 16;
-#else
-    config.temp_sensitivity = ( 1 << 30 ) / 2;
-    config.temp_offset      = 25 << 16;
-#endif
-
-#if USE_MAG
-    config.mag_sc_q16 = 19660; /* 0.3 */
-    config.mag_odr_us = MAG_ODR_US;
-#else
-    config.mag_bias_q16 = NULL;
-#endif
-
-    config.acc_bias_q16 = acc_bias;
-    config.gyr_bias_q16 = gyr_bias;
-    config.mag_bias_q16 = mag_bias;
-    config.acc_accuracy = ( int8_t )acc_accuracy;
-    config.gyr_accuracy = ( int8_t )gyr_accuracy;
-    config.mag_accuracy = ( int8_t )mag_accuracy;
-
-    /* Initialize algorithm */
-    rc |= invn_algo_agm_init( &agm, &config );
-
-    return rc;
+    return 0;
 }
 
 // TODO:什么时候调用？
@@ -395,8 +322,7 @@ void imu_callback( inv_imu_sensor_event_t* event )
         input.sRacc_data[ 1 ] = ( int32_t )event->accel[ 1 ] << 4;
         input.sRacc_data[ 2 ] = ( int32_t )event->accel[ 2 ] << 4;
 #endif
-        apply_mounting_matrix( icm_matrix, input.sRacc_data );
-        input.mask |= INVN_ALGO_AGM_INPUT_MASK_ACC;
+        //TODO:input.mask |= INVN_ALGO_AGM_INPUT_MASK_ACC;
     }
 
     if ( event->sensor_mask & ( 1 << INV_SENSOR_GYRO ) )
@@ -410,15 +336,15 @@ void imu_callback( inv_imu_sensor_event_t* event )
         input.sRgyr_data[ 1 ] = ( int32_t )event->gyro[ 1 ] << 4;
         input.sRgyr_data[ 2 ] = ( int32_t )event->gyro[ 2 ] << 4;
 #endif
-        apply_mounting_matrix( icm_matrix, input.sRgyr_data );
-        input.mask |= INVN_ALGO_AGM_INPUT_MASK_GYR;
+        //TODO:input.mask |= INVN_ALGO_AGM_INPUT_MASK_GYR;
     }
 
     input.sRtemp_data   = event->temperature;
     input.sRimu_time_us = irq_timestamp;
 
     /* Process the AgmFusion Algo */
-    rc |= invn_algo_agm_process( &agm, &input, &output );
+    // TODO:
+    //rc |= invn_algo_agm_process( &agm, &input, &output );
 
     /* Check error */
     if ( rc < 0 )
@@ -539,140 +465,7 @@ void on_command_received(inv_algo_commands cmd)
 }
 #endif
 
-/*
- * Static functions definition
- */
-
-/*
- * \brief Read NV memory and retrieve stored biases
- * \param[out] acc_bias_q16 Previously stored acc bias
- * \param[out] gyr_bias_q16 Previously stored gyr bias
- * \param[out] mag_bias_q16 Previously stored mag bias
- * \return 0 on success, -1 if no bias are in NV, an error otherwise
- */
-static int retrieve_stored_biases_from_db( int32_t acc_bias_q16[ 3 ], int32_t gyr_bias_q16[ 3 ], int32_t mag_bias_q16[ 3 ] )
-{
-    uint8_t sensor_bias[ 84 ];
-    uint8_t idx = 0;
-    int     rc;
-
-    /* Retrieve bias stored in NV memory */
-    // TODO: 这里需要从db读取数据
-    return -1;
-    // if ((rc = fm_db_manager_readData(sensor_bias)) != 0) {
-    // 	return -1;
-    // }
-
-    memcpy( acc_bias_q16, &sensor_bias[ idx ], sizeof( acc_bias_q16[ 0 ] ) * 3 );
-    idx += sizeof( acc_bias_q16[ 0 ] ) * 3;
-
-    memcpy( gyr_bias_q16, &sensor_bias[ idx ], sizeof( gyr_bias_q16[ 0 ] ) * 3 );
-    idx += sizeof( gyr_bias_q16[ 0 ] ) * 3;
-
-    memcpy( mag_bias_q16, &sensor_bias[ idx ], sizeof( mag_bias_q16[ 0 ] ) * 3 );
-
-    return rc;
-}
-
-/*
- * \brief Write sensor biases into NV memory
- * \param[in] acc_bias_q16 acc bias to be written
- * \param[in] gyr_bias_q16 gyr bias to be written
- * \param[in] mag_bias_q16 mag bias to be written
- */
-static void store_biases_in_db( const int32_t acc_bias_q16[ 3 ], const int32_t gyr_bias_q16[ 3 ], const int32_t mag_bias_q16[ 3 ] )
-{
-    uint8_t sensors_biases[ 84 ] = { 0 };
-    uint8_t idx                  = 0;
-
-    memcpy( &sensors_biases[ idx ], acc_bias_q16, sizeof( acc_bias_q16[ 0 ] ) * 3 );
-    idx += sizeof( acc_bias_q16[ 0 ] ) * 3;
-
-    memcpy( &sensors_biases[ idx ], gyr_bias_q16, sizeof( gyr_bias_q16[ 0 ] ) * 3 );
-    idx += sizeof( gyr_bias_q16[ 0 ] ) * 3;
-
-    memcpy( &sensors_biases[ idx ], mag_bias_q16, sizeof( mag_bias_q16[ 0 ] ) * 3 );
-
-    // TODO: 这里需要存储到db中
-    return;
-    // fm_db_manager_writeData(sensors_biases);
-}
-
-/*
- * \brief Evaluate whether biases needs to be written to flash depending on accuracies value
- */
-static void store_biases( void )
-{
-    static sensor_biases_t acc_bias;
-    static sensor_biases_t gyr_bias;
-    static sensor_biases_t mag_bias;
-    static uint8_t         biases_stored = 0;
-
-    if ( ! biases_stored )
-    {
-        if ( output.acc_accuracy_flag == 3 )
-        {
-            memcpy( acc_bias.bias_q16, output.acc_bias_q16, sizeof( output.acc_bias_q16 ) );
-            acc_bias.is_saved = 1;
-        }
-
-        if ( output.gyr_accuracy_flag == 3 )
-        {
-            memcpy( gyr_bias.bias_q16, output.gyr_bias_q16, sizeof( output.gyr_bias_q16 ) );
-            gyr_bias.is_saved = 1;
-        }
-
-#if USE_MAG
-        if ( mag_init_successful )
-        {
-            if ( output.mag_accuracy_flag == 3 )
-            {
-                memcpy( mag_bias.bias_q16, output.mag_bias_q16, sizeof( output.mag_bias_q16 ) );
-                mag_bias.is_saved = 1;
-            }
-        }
-        else
-        {
-            /* Mag is not connected so let's put zeros */
-            memset( mag_bias.bias_q16, 0, sizeof( mag_bias.bias_q16 ) );
-            mag_bias.is_saved = 1;
-        }
-#else
-        /* Mag is not connected so let's put zeros */
-        memset( mag_bias.bias_q16, 0, sizeof( mag_bias.bias_q16 ) );
-        mag_bias.is_saved = 1;
-#endif
-
-        if ( ( acc_bias.is_saved == 1 ) && ( gyr_bias.is_saved == 1 ) && ( mag_bias.is_saved == 1 ) )
-        {
-            /*
-             * WARNING: With this configuration, the bias can be stored up to 186 iterations
-             * in flash before erase sector. The erase procedure with the first write, can take up to 250ms.
-             * In this example, the erase is done dynamically. Depending on the context, it could be better to do it
-             * when the software go to shutdown.
-             */
-            store_biases_in_db( acc_bias.bias_q16, gyr_bias.bias_q16, mag_bias.bias_q16 );
-            biases_stored = 1;
-        }
-    }
-}
-
-static void apply_mounting_matrix( const int32_t matrix[ 9 ], int32_t raw[ 3 ] )
-{
-    int64_t data_q30[ 3 ];
-
-    for ( unsigned i = 0; i < 3; i++ )
-    {
-        data_q30[ i ] = ( ( int64_t )matrix[ 3 * i + 0 ] * raw[ 0 ] );
-        data_q30[ i ] += ( ( int64_t )matrix[ 3 * i + 1 ] * raw[ 1 ] );
-        data_q30[ i ] += ( ( int64_t )matrix[ 3 * i + 2 ] * raw[ 2 ] );
-    }
-    raw[ 0 ] = ( int32_t )( data_q30[ 0 ] >> 30 );
-    raw[ 1 ] = ( int32_t )( data_q30[ 1 ] >> 30 );
-    raw[ 2 ] = ( int32_t )( data_q30[ 2 ] >> 30 );
-}
-
-static uint32_t bitfield_to_us( uint32_t odr_bitfield )
+uint32_t bitfield_to_us( uint32_t odr_bitfield )
 {
     switch ( ( GYRO_CONFIG0_ODR_t )odr_bitfield )
     {
@@ -691,6 +484,30 @@ static uint32_t bitfield_to_us( uint32_t odr_bitfield )
         default:
             return 640000;
     }
+}
+
+/*
+ * Static functions definition
+ */
+
+/*
+ * \brief Read NV memory and retrieve stored biases
+ * \param[out] acc_bias_q16 Previously stored acc bias
+ * \param[out] gyr_bias_q16 Previously stored gyr bias
+ * \param[out] mag_bias_q16 Previously stored mag bias
+ * \return 0 on success, -1 if no bias are in NV, an error otherwise
+ */
+static int retrieve_biases( int32_t acc_bias[ 3 ], int32_t gyr_bias[ 3 ], int32_t mag_bias[ 3 ] )
+{
+    return -1;
+}
+
+/*
+ * \brief Evaluate whether biases needs to be written to flash depending on accuracies value
+ */
+static void store_biases( void )
+{
+    return;
 }
 
 #if ! IS_HIGH_RES_MODE
@@ -741,7 +558,7 @@ static int accel_fsr_g_to_bitfield( int32_t fsr )
 }
 #endif
 
-static void print_data( uint64_t time, const InvnAlgoAGMInput* input, const InvnAlgoAGMOutput* output )
+static void print_data( uint64_t time, const FMAGMInput* input, const InvnAlgoAGMOutput* output )
 {
     ( void )time;
 
@@ -758,12 +575,12 @@ static void print_data( uint64_t time, const InvnAlgoAGMInput* input, const Invn
     iter_algo++;
 }
 
-static void print_inputs( uint64_t time, const InvnAlgoAGMInput* input )
+static void print_inputs( uint64_t time, const FMAGMInput* input )
 {
     if ( data_to_print & MASK_PRINT_INPUT_DATA )
     {
         /* IMU data */
-        printf( "%lld: INPUT  RAcc=[%d, %d, %d] RGyr=[%d, %d, %d] Rtemp=[%d]\n", time,
+        printf( "%ld: INPUT  RAcc=[%d, %d, %d] RGyr=[%d, %d, %d] Rtemp=[%d]\n", time,
 #if IS_HIGH_RES_MODE
                 input->sRacc_data[ 0 ], input->sRacc_data[ 1 ], input->sRacc_data[ 2 ], input->sRgyr_data[ 0 ], input->sRgyr_data[ 1 ], input->sRgyr_data[ 2 ],
 #else
@@ -774,7 +591,7 @@ static void print_inputs( uint64_t time, const InvnAlgoAGMInput* input )
         if ( mag_init_successful )
         {
             /* Mag data */
-            printf( "%lld: INPUT  RMag=[%d, %d, %d]\n", time, input->sRmag_data[ 0 ], input->sRmag_data[ 1 ], input->sRmag_data[ 2 ] );
+            printf( "%ld: INPUT  RMag=[%d, %d, %d]\n", time, input->sRmag_data[ 0 ], input->sRmag_data[ 1 ], input->sRmag_data[ 2 ] );
         }
 #endif
     }
@@ -808,25 +625,24 @@ static void print_outputs( uint64_t time, const InvnAlgoAGMOutput* output )
     fixedpoint_to_float( output->grv_quat_q30, grv_quat, 30, 4 );
     fixedpoint_to_float( output->gravity_q16, gravity, 16, 3 );
     fixedpoint_to_float( output->linear_acc_q16, linear_acc, 16, 3 );
-    quaternions_to_angles( grv_quat, angles_deg_grv );
+    //TODO:quaternions_to_angles( grv_quat, angles_deg_grv );
 
 #if USE_MAG
     fixedpoint_to_float( output->mag_cal_q16, mag_cal, 16, 3 );
     fixedpoint_to_float( output->mag_bias_q16, mag_bias, 16, 3 );
     fixedpoint_to_float( output->rv_quat_q30, rv_quat, 30, 4 );
-    quaternions_to_angles( rv_quat, angles_deg_rv );
-    rv_heading_accuracy = RAD_TO_DEG( ( float )output->rv_accuracy_q27 / ( 1 << 27 ) );
+    //TODO:quaternions_to_angles( rv_quat, angles_deg_rv );
 #endif
 
     /* Print outputs */
     if ( data_to_print & MASK_PRINT_ACC_DATA )
     {
-        printf( "%lld: OUTPUT Acc=[%.3f, %.3f, %.3f]g AccBias=[%.3f, %.3f, %.3f]mg Accuracy=%d\n", time, acc_g[ 0 ], acc_g[ 1 ], acc_g[ 2 ], acc_bias[ 0 ] * 1000, acc_bias[ 1 ] * 1000, acc_bias[ 2 ] * 1000, ( int32_t )output->acc_accuracy_flag );
+        printf( "%ld: OUTPUT Acc=[%.3f, %.3f, %.3f]g AccBias=[%.3f, %.3f, %.3f]mg Accuracy=%d\n", time, acc_g[ 0 ], acc_g[ 1 ], acc_g[ 2 ], acc_bias[ 0 ] * 1000, acc_bias[ 1 ] * 1000, acc_bias[ 2 ] * 1000, ( int32_t )output->acc_accuracy_flag );
     }
 
     if ( data_to_print & MASK_PRINT_GYR_DATA )
     {
-        printf( "%lld: OUTPUT Gyr=[%.3f, %.3f, %.3f]dps GyrBias=[%.3f, %.3f, %.3f]dps Temp=[%.2f]C Accuracy=%d\n", time, gyr_dps[ 0 ], gyr_dps[ 1 ], gyr_dps[ 2 ], gyr_bias[ 0 ], gyr_bias[ 1 ], gyr_bias[ 2 ], temp, ( int32_t )output->gyr_accuracy_flag );
+        printf( "%ld: OUTPUT Gyr=[%.3f, %.3f, %.3f]dps GyrBias=[%.3f, %.3f, %.3f]dps Temp=[%.2f]C Accuracy=%d\n", time, gyr_dps[ 0 ], gyr_dps[ 1 ], gyr_dps[ 2 ], gyr_bias[ 0 ], gyr_bias[ 1 ], gyr_bias[ 2 ], temp, ( int32_t )output->gyr_accuracy_flag );
     }
 
 #if USE_MAG
@@ -834,32 +650,32 @@ static void print_outputs( uint64_t time, const InvnAlgoAGMOutput* output )
     {
         if ( data_to_print & MASK_PRINT_MAG_DATA )
         {
-            printf( "%lld: OUTPUT Mag=[%.3f, %.3f, %.3f]uT MagBias=[%.3f, %.3f, %.3f]uT Accuracy=%d\n", time, mag_cal[ 0 ], mag_cal[ 1 ], mag_cal[ 2 ], mag_bias[ 0 ], mag_bias[ 1 ], mag_bias[ 2 ], output->mag_accuracy_flag );
+            printf( "%ld: OUTPUT Mag=[%.3f, %.3f, %.3f]uT MagBias=[%.3f, %.3f, %.3f]uT Accuracy=%d\n", time, mag_cal[ 0 ], mag_cal[ 1 ], mag_cal[ 2 ], mag_bias[ 0 ], mag_bias[ 1 ], mag_bias[ 2 ], output->mag_accuracy_flag );
         }
 
         if ( data_to_print & MASK_PRINT_9AXIS_DATA )
         {
-            printf( "%lld: OUTPUT 9Axis=[%f, %f, %f, %f] 9AxisAccuracy=[%f]deg\n", time, rv_quat[ 0 ], rv_quat[ 1 ], rv_quat[ 2 ], rv_quat[ 3 ], rv_heading_accuracy );
+            printf( "%ld: OUTPUT 9Axis=[%f, %f, %f, %f] 9AxisAccuracy=[%f]deg\n", time, rv_quat[ 0 ], rv_quat[ 1 ], rv_quat[ 2 ], rv_quat[ 3 ], rv_heading_accuracy );
 
-            printf( "%lld: OUTPUT Euler9Axis=[%.2f, %.2f, %.2f]deg 9AxisAccuracy=[%f]deg\n", time, angles_deg_rv[ 0 ], angles_deg_rv[ 1 ], angles_deg_rv[ 2 ], rv_heading_accuracy );
+            printf( "%ld: OUTPUT Euler9Axis=[%.2f, %.2f, %.2f]deg 9AxisAccuracy=[%f]deg\n", time, angles_deg_rv[ 0 ], angles_deg_rv[ 1 ], angles_deg_rv[ 2 ], rv_heading_accuracy );
         }
     }
 #endif
 
     if ( data_to_print & MASK_PRINT_6AXIS_DATA )
     {
-        printf( "%lld: OUTPUT 6Axis=[%f, %f, %f, %f]\n", time, grv_quat[ 0 ], grv_quat[ 1 ], grv_quat[ 2 ], grv_quat[ 3 ] );
+        printf( "%ld: OUTPUT 6Axis=[%f, %f, %f, %f]\n", time, grv_quat[ 0 ], grv_quat[ 1 ], grv_quat[ 2 ], grv_quat[ 3 ] );
 
-        printf( "%lld: OUTPUT Euler6Axis=[%.2f, %.2f, %.2f]deg\n", time, angles_deg_grv[ 0 ], angles_deg_grv[ 1 ], angles_deg_grv[ 2 ] );
+        printf( "%ld: OUTPUT Euler6Axis=[%.2f, %.2f, %.2f]deg\n", time, angles_deg_grv[ 0 ], angles_deg_grv[ 1 ], angles_deg_grv[ 2 ] );
     }
 
     if ( data_to_print & MASK_PRINT_GRAVITY_DATA )
     {
-        printf( "%lld: OUTPUT Gravity=[%f, %f, %f] Accuracy=%d\n", time, gravity[ 0 ], gravity[ 1 ], gravity[ 2 ], output->acc_accuracy_flag );
+        printf( "%ld: OUTPUT Gravity=[%f, %f, %f] Accuracy=%d\n", time, gravity[ 0 ], gravity[ 1 ], gravity[ 2 ], output->acc_accuracy_flag );
     }
     if ( data_to_print & MASK_PRINT_LINEARACC_DATA )
     {
-        printf( "%lld: OUTPUT LinearAcc=[%f, %f, %f] Accuracy=%d\n", time, linear_acc[ 0 ], linear_acc[ 1 ], linear_acc[ 2 ], output->acc_accuracy_flag );
+        printf( "%ld: OUTPUT LinearAcc=[%f, %f, %f] Accuracy=%d\n", time, linear_acc[ 0 ], linear_acc[ 1 ], linear_acc[ 2 ], output->acc_accuracy_flag );
     }
 }
 
@@ -869,41 +685,4 @@ static void fixedpoint_to_float( const int32_t* in, float* out, const uint8_t fx
 
     for ( uint8_t i = 0; i < dim; i++ )
         out[ i ] = scale * ( float )in[ i ];
-}
-
-static void quaternions_to_angles( const float quat[ 4 ], float angles[ 3 ] )
-{
-    const float RAD_2_DEG = ( 180.f / 3.14159265358979f );
-    float       rot_matrix[ 9 ];
-
-    // quaternion to rotation matrix
-    const float dTx  = 2.0f * quat[ 1 ];
-    const float dTy  = 2.0f * quat[ 2 ];
-    const float dTz  = 2.0f * quat[ 3 ];
-    const float dTwx = dTx * quat[ 0 ];
-    const float dTwy = dTy * quat[ 0 ];
-    const float dTwz = dTz * quat[ 0 ];
-    const float dTxx = dTx * quat[ 1 ];
-    const float dTxy = dTy * quat[ 1 ];
-    const float dTxz = dTz * quat[ 1 ];
-    const float dTyy = dTy * quat[ 2 ];
-    const float dTyz = dTz * quat[ 2 ];
-    const float dTzz = dTz * quat[ 3 ];
-
-    rot_matrix[ 0 ] = 1.0f - ( dTyy + dTzz );
-    rot_matrix[ 1 ] = dTxy - dTwz;
-    rot_matrix[ 2 ] = dTxz + dTwy;
-    rot_matrix[ 3 ] = dTxy + dTwz;
-    rot_matrix[ 4 ] = 1.0f - ( dTxx + dTzz );
-    rot_matrix[ 5 ] = dTyz - dTwx;
-    rot_matrix[ 6 ] = dTxz - dTwy;
-    rot_matrix[ 7 ] = dTyz + dTwx;
-    rot_matrix[ 8 ] = 1.0f - ( dTxx + dTyy );
-
-    angles[ 0 ] = atan2f( -rot_matrix[ 3 ], rot_matrix[ 0 ] ) * RAD_2_DEG;
-    angles[ 1 ] = atan2f( -rot_matrix[ 7 ], rot_matrix[ 8 ] ) * RAD_2_DEG;
-    angles[ 2 ] = asinf( -rot_matrix[ 6 ] ) * RAD_2_DEG;
-
-    if ( angles[ 0 ] < 0.f )
-        angles[ 0 ] += 360.f;
 }

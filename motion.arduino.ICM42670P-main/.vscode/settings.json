@@ -54,6 +54,10 @@
         "stdexcept": "cpp",
         "stop_token": "cpp",
         "streambuf": "cpp",
-        "typeinfo": "cpp"
+        "typeinfo": "cpp",
+        "stdio.h": "c",
+        "example_algo.h": "c",
+        "inv_imu_driver.h": "c",
+        "fusionahrs.h": "c"
     }
 }

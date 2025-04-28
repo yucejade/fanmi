@@ -27,6 +27,7 @@ void event_cb( inv_imu_sensor_event_t* evt )
     if ( IMU.isAccelDataValid( evt ) && IMU.isGyroDataValid( evt ) )
     {
         // Format data for Serial Plotter
+        printf( "Time:%u,", evt->timestamp_fsync);
         printf( "AccelX:%f,", evt->accel[ 0 ] / 2048.0);
         printf( "AccelY:%f,", evt->accel[ 1 ] / 2048.0);
         printf( "AccelZ:%f,", evt->accel[ 2 ] / 2048.0);

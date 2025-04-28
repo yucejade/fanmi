@@ -29,15 +29,13 @@
 #include "imu/inv_imu_defs.h"
 #include "imu/inv_imu_driver.h"
 
-#include "invn_algo_agm.h"
-
 /*** Example configuration ***/
 
 /* 
  * Select communication link between SmartMotion and IMU 
  */
-#define SERIF_TYPE UI_SPI4
-//#define SERIF_TYPE           UI_I2C
+//#define SERIF_TYPE UI_SPI4
+#define SERIF_TYPE           UI_I2C
 
 /*
  * Set this define to 0 to disable mag support
@@ -207,6 +205,6 @@ uint32_t bitfield_to_us(uint32_t odr_bitfield);
  * \brief This function processes commands received from frontend
  * \param[in] cmd The command to be processed
  */
-void on_command_received(inv_algo_commands cmd);
+//void on_command_received(inv_algo_commands cmd);
 
 #endif /* !_EXAMPLE_ALGO_H_ */

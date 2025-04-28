@@ -9,12 +9,12 @@ export FmInstallPrefix="${FmDev}/build/package"
 
 rm build -fr
 
-cd ${FmDev}/thirdparty/libgpiod-1.6.3
-${FmDev}/thirdparty/libgpiod-1.6.3/autogen.sh --enable-tools=yes
-${FmDev}/thirdparty/libgpiod-1.6.3/configure  --prefix=${FmInstallPrefix}
-make -f ${FmDev}/thirdparty/libgpiod-1.6.3/Makefile
-# sudo make -f ${FmDev}/thirdparty/libgpiod/Makefile install
-cd -
+# cd ${FmDev}/thirdparty/libgpiod-1.6.3
+# ${FmDev}/thirdparty/libgpiod-1.6.3/autogen.sh --enable-tools=yes
+# ${FmDev}/thirdparty/libgpiod-1.6.3/configure  --prefix=${FmInstallPrefix}
+# make -f ${FmDev}/thirdparty/libgpiod-1.6.3/Makefile
+# # sudo make -f ${FmDev}/thirdparty/libgpiod/Makefile install
+# cd -
 
 #cmake -B build -S . -DCMAKE_BUILD_TYPE=debug ..
 #cd build

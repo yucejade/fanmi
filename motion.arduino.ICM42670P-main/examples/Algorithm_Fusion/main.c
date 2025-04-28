@@ -23,6 +23,7 @@
 
 /* std */
 #include <stdio.h>
+#include <memory.h>
 #include "example_algo.h"
 #include "ErrorHelper.h"
 
@@ -65,6 +66,8 @@ int main(void)
 	uint32_t                 imu_sample_count = 0;
 #endif
 
+	memset(&icm_serif, 0, sizeof(icm_serif));
+
 #if USE_MAG
 	/* Initialize magnetometer */
 	rc = setup_mag_device(&ist8306_serif);
@@ -79,8 +82,9 @@ int main(void)
 #endif
 
 	rc |= setup_imu_device(&icm_serif);
-	rc |= init_agm_biases();
-	rc |= init_agm_algo();
+	// TODO:Fusion
+	//rc |= init_agm_biases();
+	//rc |= init_agm_algo();
 	rc |= configure_imu_device();
 	check_rc(rc, "error during initialization");
 	printf("IMU successfully initialized\n");

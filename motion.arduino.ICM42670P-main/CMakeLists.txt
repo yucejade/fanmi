@@ -21,6 +21,8 @@ ELSE()
 ENDIF()
 
 ADD_SUBDIRECTORY(src)
+ADD_SUBDIRECTORY(thirdparty/Fusion)
+#ADD_SUBDIRECTORY(examples/Algorithm_Fusion)
 ADD_SUBDIRECTORY(examples/APEX_PedometerAndTilt)
 ADD_SUBDIRECTORY(examples/APEX_Pedometer)
 ADD_SUBDIRECTORY(examples/APEX_WakeOnMotion)
