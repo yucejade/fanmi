@@ -21,7 +21,7 @@ static void* read_sensor( void* arg )
     SENSOR_DB             prev_sensor_data;
 
     memset( &prev_sensor_data, 0, sizeof( prev_sensor_data ) );
-    prev_sensor_data.time = clock();
+    prev_sensor_data.time = Time::GetSystemTime();
 
     while ( true )
     {
@@ -36,7 +36,7 @@ static void* read_sensor( void* arg )
         // std::cout << "Sleep time: " << st << " ms" << std::endl;
         std::this_thread::sleep_for( std::chrono::milliseconds( st ) );
 
-        sensor_data.time = clock();
+        sensor_data.time = Time::GetSystemTime();
         info += "Time: " + std::to_string( sensor_data.time ) + "\n";
 
         // MMC56x3
@@ -93,7 +93,7 @@ static void* read_sensor( void* arg )
 
         pArg->ahrs_calculation->SolveAnCalculation( &sensor_data );
 
-#if 1
+#if 0
         // 计算位移
         if ( std::isnan( prev_sensor_data.eacc_x ) || std::isnan( prev_sensor_data.eacc_y ) || std::isnan( prev_sensor_data.eacc_z ) )
         {
@@ -104,25 +104,25 @@ static void* read_sensor( void* arg )
 
         const size_t num_points = 2;
         const float  kG         = 9.80665f;
-        const double duration   = ( sensor_data.time - prev_sensor_data.time ) / static_cast< double >( CLOCKS_PER_SEC );
+        const double duration   = ( sensor_data.time - prev_sensor_data.time ) / static_cast< double >( 1000 );
         auto         x_func     = [ &prev_sensor_data, &sensor_data, duration, kG ]( double t )
         {
-            float ratio = ( t - prev_sensor_data.time / static_cast< double >( CLOCKS_PER_SEC ) ) / duration;
+            float ratio = ( t - prev_sensor_data.time / static_cast< double >( 1000 ) ) / duration;
             return kG * (sensor_data.eacc_x + ratio * ( sensor_data.eacc_x - prev_sensor_data.eacc_x ));
         };
         auto y_func = [ &prev_sensor_data, &sensor_data, duration, kG ]( double t )
         {
-            float ratio = ( t - prev_sensor_data.time / static_cast< double >( CLOCKS_PER_SEC ) ) / duration;
+            float ratio = ( t - prev_sensor_data.time / static_cast< double >( 1000 ) ) / duration;
             return kG * (sensor_data.eacc_y + ratio * ( sensor_data.eacc_y - prev_sensor_data.eacc_y ));
         };
         auto z_func = [ &prev_sensor_data, &sensor_data, duration, kG ]( double t )
         {
-            float ratio = ( t - prev_sensor_data.time / static_cast< double >( CLOCKS_PER_SEC ) ) / duration;
+            float ratio = ( t - prev_sensor_data.time / static_cast< double >( 1000 ) ) / duration;
             return kG * (sensor_data.eacc_z + ratio * ( sensor_data.eacc_z - prev_sensor_data.eacc_z ));
         };
-        MotionData mdx    = pArg->ahrs_calculation->AccelerationToDisplacement( x_func, prev_sensor_data.time / static_cast< double >( CLOCKS_PER_SEC ), sensor_data.time / static_cast< double >( CLOCKS_PER_SEC ), 2, prev_sensor_data.vel_x, prev_sensor_data.pos_x );
-        MotionData mdy    = pArg->ahrs_calculation->AccelerationToDisplacement( y_func, prev_sensor_data.time / static_cast< double >( CLOCKS_PER_SEC ), sensor_data.time / static_cast< double >( CLOCKS_PER_SEC ), 2, prev_sensor_data.vel_y, prev_sensor_data.pos_y );
-        MotionData mdz    = pArg->ahrs_calculation->AccelerationToDisplacement( z_func, prev_sensor_data.time / static_cast< double >( CLOCKS_PER_SEC ), sensor_data.time / static_cast< double >( CLOCKS_PER_SEC ), 2, prev_sensor_data.vel_z, prev_sensor_data.pos_z );
+        MotionData mdx    = pArg->ahrs_calculation->AccelerationToDisplacement( x_func, prev_sensor_data.time / static_cast< double >( 1000 ), sensor_data.time / static_cast< double >( 1000 ), 2, prev_sensor_data.vel_x, prev_sensor_data.pos_x );
+        MotionData mdy    = pArg->ahrs_calculation->AccelerationToDisplacement( y_func, prev_sensor_data.time / static_cast< double >( 1000 ), sensor_data.time / static_cast< double >( 1000 ), 2, prev_sensor_data.vel_y, prev_sensor_data.pos_y );
+        MotionData mdz    = pArg->ahrs_calculation->AccelerationToDisplacement( z_func, prev_sensor_data.time / static_cast< double >( 1000 ), sensor_data.time / static_cast< double >( 1000 ), 2, prev_sensor_data.vel_z, prev_sensor_data.pos_z );
         sensor_data.vel_x = mdx.velocity[ num_points - 1 ];
         sensor_data.vel_y = mdy.velocity[ num_points - 1 ];
         sensor_data.vel_z = mdz.velocity[ num_points - 1 ];

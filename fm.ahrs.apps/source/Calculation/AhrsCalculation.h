@@ -15,7 +15,7 @@
 //
 struct SENSOR_DB
 {
-    clock_t time;
+    unsigned int time;
     float acc_x;
     float acc_y;
     float acc_z;
