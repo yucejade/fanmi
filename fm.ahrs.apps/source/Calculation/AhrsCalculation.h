@@ -15,7 +15,7 @@
 //
 struct SENSOR_DB
 {
-    float time;
+    clock_t time;
     float acc_x;
     float acc_y;
     float acc_z;
@@ -32,12 +32,28 @@ struct SENSOR_DB
     float roll;
     float pitch;
     float yaw;
+    float eacc_x;
+    float eacc_y;
+    float eacc_z;
+    float vel_x;
+    float vel_y;
+    float vel_z;
     float pos_x;
     float pos_y;
     float pos_z;
     //
     std::string info;
 };
+
+// 从加速度计算位移的函数
+struct MotionData
+{
+    std::vector< float > time;
+    std::vector< float > acceleration;
+    std::vector< float > velocity;
+    std::vector< float > displacement;
+};
+
 // 验证字符串是否为数字
 static bool isNumber( const std::string& str )
 {
@@ -65,7 +81,7 @@ public:
     const FusionVector gyroscopeOffset           = { 0.0f, 0.0f, 0.0f };
     const FusionMatrix accelerometerMisalignment = { 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f };
     const FusionVector accelerometerSensitivity  = { 1.0f, 1.0f, 1.0f };
-    const FusionVector accelerometerOffset       = { -0.05f, -0.05f, 0.02f };
+    const FusionVector accelerometerOffset       = { 0.0f, 0.0f, 0.023f };
     const FusionMatrix softIronMatrix            = { 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f };
     const FusionVector hardIronOffset            = { 0.0f, 0.0f, 0.0f };
 public:
@@ -81,6 +97,11 @@ public:
         .magneticRejection     = 10.0f,
         .recoveryTriggerPeriod = 5 * SAMPLE_RATE, /* 5 seconds */
     };
+
 public:
     void SolveAnCalculation( SENSOR_DB* sensor_data );
+    MotionData AccelerationToDisplacement( const std::function< float( float ) >& a_func, float t_start, float t_end, size_t num_points, float v0 = 0.0, float s0 = 0.0 );
+
+private:
+    std::vector< float > Integrate( const std::vector< float >& f, const std::vector< float >& t, float initial = 0.0 );
 };

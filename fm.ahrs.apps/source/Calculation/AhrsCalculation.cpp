@@ -48,9 +48,51 @@ void AhrsCalculation::SolveAnCalculation( SENSOR_DB* sensor_data )
     sensor_data->pitch = euler.angle.pitch;
     sensor_data->yaw   = euler.angle.yaw;
     //
-    sensor_data->pos_x = earth.axis.x;
-    sensor_data->pos_y = earth.axis.y;
-    sensor_data->pos_z = earth.axis.z;
+    sensor_data->eacc_x = earth.axis.x;
+    sensor_data->eacc_y = earth.axis.y;
+    sensor_data->eacc_z = earth.axis.z;
 
     //
+}
+
+std::vector< float > AhrsCalculation::Integrate( const std::vector< float >& f, const std::vector< float >& t, float initial )
+{
+    std::vector< float > result( f.size() );
+    result[ 0 ] = initial;
+
+    for ( size_t i = 1; i < f.size(); ++i )
+    {
+        float dt   = t[ i ] - t[ i - 1 ];
+        result[ i ] = result[ i - 1 ] + 0.5 * ( f[ i ] + f[ i - 1 ] ) * dt;
+    }
+
+    return result;
+}
+
+MotionData AhrsCalculation::AccelerationToDisplacement( const std::function< float( float ) >& a_func, float t_start, float t_end, size_t num_points, float v0, float s0 )
+{
+    MotionData data;
+
+    // 生成时间数组
+    data.time.resize( num_points );
+    float dt = ( t_end - t_start ) / ( num_points - 1 );
+    for ( size_t i = 0; i < num_points; ++i )
+    {
+        data.time[ i ] = t_start + i * dt;
+    }
+
+    // 计算加速度数组
+    data.acceleration.resize( num_points );
+    for ( size_t i = 0; i < num_points; ++i )
+    {
+        data.acceleration[ i ] = a_func( data.time[ i ] );
+    }
+
+    // 计算速度
+    data.velocity = Integrate( data.acceleration, data.time, v0 );
+
+    // 计算位移
+    data.displacement = Integrate( data.velocity, data.time, s0 );
+
+    return data;
 }

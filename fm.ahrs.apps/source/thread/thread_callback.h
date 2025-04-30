@@ -6,11 +6,11 @@
 
 struct sensor_device
 {
-    MMC56x3*         sensor_mmc;
-    ICM42670*        sensor_imu;
-    AhrsCalculation* ahrs_calculation;
-    //
+    MMC56x3*                                  sensor_mmc;
+    ICM42670*                                 sensor_imu;
+    AhrsCalculation*                          ahrs_calculation;
     moodycamel::ConcurrentQueue< SENSOR_DB >* sensor_data_queue;
+    Renderer*                                 renderer;
 };
 //
 
@@ -18,13 +18,23 @@ struct sensor_device
 static void* read_sensor( void* arg )
 {
     struct sensor_device* pArg = ( struct sensor_device* )arg;
-    //
+    SENSOR_DB             prev_sensor_data;
 
-    //
+    memset( &prev_sensor_data, 0, sizeof( prev_sensor_data ) );
+    prev_sensor_data.time = clock();
+
     while ( true )
     {
         std::string info = "Info:\n";
         SENSOR_DB   sensor_data;
+
+        memset( &sensor_data, 0, sizeof( sensor_data ) );
+
+        // Run @ ODR 100Hz
+        size_t s  = pArg->sensor_data_queue->size_approx();
+        size_t st = ( s / 10 * 30 + 10 );
+        // std::cout << "Sleep time: " << st << " ms" << std::endl;
+        std::this_thread::sleep_for( std::chrono::milliseconds( st ) );
 
         sensor_data.time = clock();
         info += "Time: " + std::to_string( sensor_data.time ) + "\n";
@@ -81,23 +91,59 @@ static void* read_sensor( void* arg )
             continue;
         }
 
-        //
         pArg->ahrs_calculation->SolveAnCalculation( &sensor_data );
-        //
+
+#if 1
+        // 计算位移
+        if ( std::isnan( prev_sensor_data.eacc_x ) || std::isnan( prev_sensor_data.eacc_y ) || std::isnan( prev_sensor_data.eacc_z ) )
+        {
+            memcpy( &prev_sensor_data, &sensor_data, sizeof( sensor_data ) );
+            std::cout << "prev_sensor_data is NaN" << std::endl;
+            continue;
+        }
+
+        const size_t num_points = 2;
+        const float  kG         = 9.80665f;
+        const double duration   = ( sensor_data.time - prev_sensor_data.time ) / static_cast< double >( CLOCKS_PER_SEC );
+        auto         x_func     = [ &prev_sensor_data, &sensor_data, duration, kG ]( double t )
+        {
+            float ratio = ( t - prev_sensor_data.time / static_cast< double >( CLOCKS_PER_SEC ) ) / duration;
+            return kG * (sensor_data.eacc_x + ratio * ( sensor_data.eacc_x - prev_sensor_data.eacc_x ));
+        };
+        auto y_func = [ &prev_sensor_data, &sensor_data, duration, kG ]( double t )
+        {
+            float ratio = ( t - prev_sensor_data.time / static_cast< double >( CLOCKS_PER_SEC ) ) / duration;
+            return kG * (sensor_data.eacc_y + ratio * ( sensor_data.eacc_y - prev_sensor_data.eacc_y ));
+        };
+        auto z_func = [ &prev_sensor_data, &sensor_data, duration, kG ]( double t )
+        {
+            float ratio = ( t - prev_sensor_data.time / static_cast< double >( CLOCKS_PER_SEC ) ) / duration;
+            return kG * (sensor_data.eacc_z + ratio * ( sensor_data.eacc_z - prev_sensor_data.eacc_z ));
+        };
+        MotionData mdx    = pArg->ahrs_calculation->AccelerationToDisplacement( x_func, prev_sensor_data.time / static_cast< double >( CLOCKS_PER_SEC ), sensor_data.time / static_cast< double >( CLOCKS_PER_SEC ), 2, prev_sensor_data.vel_x, prev_sensor_data.pos_x );
+        MotionData mdy    = pArg->ahrs_calculation->AccelerationToDisplacement( y_func, prev_sensor_data.time / static_cast< double >( CLOCKS_PER_SEC ), sensor_data.time / static_cast< double >( CLOCKS_PER_SEC ), 2, prev_sensor_data.vel_y, prev_sensor_data.pos_y );
+        MotionData mdz    = pArg->ahrs_calculation->AccelerationToDisplacement( z_func, prev_sensor_data.time / static_cast< double >( CLOCKS_PER_SEC ), sensor_data.time / static_cast< double >( CLOCKS_PER_SEC ), 2, prev_sensor_data.vel_z, prev_sensor_data.pos_z );
+        sensor_data.vel_x = mdx.velocity[ num_points - 1 ];
+        sensor_data.vel_y = mdy.velocity[ num_points - 1 ];
+        sensor_data.vel_z = mdz.velocity[ num_points - 1 ];
+        sensor_data.pos_x = mdx.displacement[ num_points - 1 ];
+        sensor_data.pos_y = mdy.displacement[ num_points - 1 ];
+        sensor_data.pos_z = mdz.displacement[ num_points - 1 ];
+        memcpy( &prev_sensor_data, &sensor_data, sizeof( sensor_data ) );
+#endif
+
         info += "Quaternion: " + std::to_string( sensor_data.quate_x ) + " " + std::to_string( sensor_data.quate_y ) + " " + std::to_string( sensor_data.quate_z ) + " " + std::to_string( sensor_data.quate_w ) + "\n";
         info += "Roll: " + std::to_string( sensor_data.roll ) + " Pitch: " + std::to_string( sensor_data.pitch ) + " Yaw: " + std::to_string( sensor_data.yaw ) + "\n";
+        info += "EAcc X: " + std::to_string( sensor_data.eacc_x ) + " EAcc Y: " + std::to_string( sensor_data.eacc_y ) + " EAcc Z: " + std::to_string( sensor_data.eacc_z ) + "\n";
         info += "Pos X: " + std::to_string( sensor_data.pos_x ) + " Pos Y: " + std::to_string( sensor_data.pos_y ) + " Pos Z: " + std::to_string( sensor_data.pos_z ) + "\n";
         info += "Queue size: " + std::to_string( pArg->sensor_data_queue->size_approx() ) + "\n";
 
-        //
         sensor_data.info = info;
+
         // 生成数据
         pArg->sensor_data_queue->enqueue( sensor_data );
-        //
+
         URHO3D_LOGINFO( info.c_str() );
-        // Run @ ODR 100Hz
-        std::this_thread::sleep_for( std::chrono::milliseconds( 10 ) );
-        //
     }
 
     //

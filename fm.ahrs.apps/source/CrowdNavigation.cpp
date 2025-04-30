@@ -789,6 +789,8 @@ void CrowdNavigation::read_sensor_start()
     mPara.sensor_mmc        = &sensor_mmc_;
     mPara.ahrs_calculation  = ahrs_calculation_;
     mPara.sensor_data_queue = &sensor_data_queue_;
+    //mPara.renderer = context_->GetSubsystem<Renderer>();
+
     // 创建线程并检查返回值
     if ( pthread_create( &read_sensor_thread_id, NULL, read_sensor, &mPara ) != 0 )
     {
@@ -836,9 +838,6 @@ void CrowdNavigation::read_sensor_end()
             // axes_obj->SetMaterial( cache->GetResource< Material >( "axes.xml" ) );
             axes_obj->SetCastShadows( true );
         }
-    } else {
-        std::string text = "Queue size:" + std::to_string(sensor_data_queue_.size_approx());
-        infoText_->SetText( text.c_str() );
     }
 }
 //
