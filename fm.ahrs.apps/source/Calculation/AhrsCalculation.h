@@ -41,7 +41,7 @@ struct SENSOR_DB
     float pos_x;
     float pos_y;
     float pos_z;
-    //
+
     std::string info;
 };
 
@@ -81,7 +81,7 @@ public:
     const FusionVector gyroscopeOffset           = { 0.0f, 0.0f, 0.0f };
     const FusionMatrix accelerometerMisalignment = { 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f };
     const FusionVector accelerometerSensitivity  = { 1.0f, 1.0f, 1.0f };
-    const FusionVector accelerometerOffset       = { 0.0f, 0.0f, 0.023f };
+    const FusionVector accelerometerOffset       = { 0.014f, 0.016f, 0.026f };
     const FusionMatrix softIronMatrix            = { 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f };
     const FusionVector hardIronOffset            = { 0.0f, 0.0f, 0.0f };
 public:
@@ -100,8 +100,4 @@ public:
 
 public:
     void SolveAnCalculation( SENSOR_DB* sensor_data );
-    MotionData AccelerationToDisplacement( const std::function< float( float ) >& a_func, float t_start, float t_end, size_t num_points, float v0 = 0.0, float s0 = 0.0 );
-
-private:
-    std::vector< float > Integrate( const std::vector< float >& f, const std::vector< float >& t, float initial = 0.0 );
 };
