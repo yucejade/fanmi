@@ -773,9 +773,9 @@ void CrowdNavigation::init_sensor()
         URHO3D_LOGERROR( "Failed to initialize ICM42670 sensor" );
     }
     // Accel ODR = 100 Hz and Full Scale Range = 16G
-    sensor_imu_.startAccel( 100, 16 );
+    sensor_imu_.startAccel( SAMPLE_RATE, 16 );
     // Gyro ODR = 100 Hz and Full Scale Range = 2000 dps
-    sensor_imu_.startGyro( 100, 2000 );
+    sensor_imu_.startGyro( SAMPLE_RATE, 2000 );
     // Wait IMU to start
     std::this_thread::sleep_for( std::chrono::milliseconds( 100 ) );
 }
@@ -816,7 +816,7 @@ void CrowdNavigation::read_sensor_end()
             infoText_->SetText( sensor_data.info.c_str() );
             // 从欧拉角创建四元数
             // axes_node_->SetRotation( Quaternion( sensor_data.quate_w, Vector3( sensor_data.quate_x, sensor_data.quate_y, sensor_data.quate_z ) ) );
-            axes_node_->SetRotation( Quaternion( sensor_data.roll, sensor_data.pitch, sensor_data.yaw ) );
+            axes_node_->SetRotation( Quaternion( sensor_data.roll, sensor_data.yaw, sensor_data.pitch ) );
             axes_node_->SetPosition( Vector3( sensor_data.pos_x, sensor_data.pos_y + 10.0f, sensor_data.pos_z ) );
             //
             update_out_csv( sensor_data );
@@ -863,9 +863,17 @@ void CrowdNavigation::init_out_csv( const std::string& filename )
     csv_doc_.SetColumnName( 11, "Angle Y (d)" );
     csv_doc_.SetColumnName( 12, "Angle Z (d)" );
     //
-    csv_doc_.SetColumnName( 13, "Position X" );
-    csv_doc_.SetColumnName( 14, "Position Y" );
-    csv_doc_.SetColumnName( 15, "Position Z" );
+    csv_doc_.SetColumnName( 13, "EarthAccelerometer X" );
+    csv_doc_.SetColumnName( 14, "EarthAccelerometer Y" );
+    csv_doc_.SetColumnName( 15, "EarthAccelerometer Z" );
+    //
+    csv_doc_.SetColumnName( 16, "Velocity X" );
+    csv_doc_.SetColumnName( 17, "Velocity Y" );
+    csv_doc_.SetColumnName( 18, "Velocity Z" );
+    //
+    csv_doc_.SetColumnName( 19, "Position X" );
+    csv_doc_.SetColumnName( 20, "Position Y" );
+    csv_doc_.SetColumnName( 21, "Position Z" );
 }
 
 void CrowdNavigation::update_out_csv( const SENSOR_DB& sensor_data )
@@ -886,9 +894,15 @@ void CrowdNavigation::update_out_csv( const SENSOR_DB& sensor_data )
     csv_doc_.SetCell< float >( 10, csv_index_, sensor_data.roll );
     csv_doc_.SetCell< float >( 11, csv_index_, sensor_data.pitch );
     csv_doc_.SetCell< float >( 12, csv_index_, sensor_data.yaw );
-    csv_doc_.SetCell< float >( 13, csv_index_, sensor_data.pos_x );
-    csv_doc_.SetCell< float >( 14, csv_index_, sensor_data.pos_y );
-    csv_doc_.SetCell< float >( 15, csv_index_, sensor_data.pos_z );
+    csv_doc_.SetCell< float >( 13, csv_index_, sensor_data.eacc_x );
+    csv_doc_.SetCell< float >( 14, csv_index_, sensor_data.eacc_y );
+    csv_doc_.SetCell< float >( 15, csv_index_, sensor_data.eacc_z );
+    csv_doc_.SetCell< float >( 16, csv_index_, sensor_data.vel_x );
+    csv_doc_.SetCell< float >( 17, csv_index_, sensor_data.vel_y );
+    csv_doc_.SetCell< float >( 18, csv_index_, sensor_data.vel_z );
+    csv_doc_.SetCell< float >( 19, csv_index_, sensor_data.pos_x );
+    csv_doc_.SetCell< float >( 20, csv_index_, sensor_data.pos_y );
+    csv_doc_.SetCell< float >( 21, csv_index_, sensor_data.pos_z );
 
     //
     csv_index_++;
@@ -935,6 +949,14 @@ void CrowdNavigation::read_in_csv( const std::string& filename )
     std::vector< float > pitch = csv_doc_.GetColumn< float >( "Angle Y (d)" );
     std::vector< float > yaw   = csv_doc_.GetColumn< float >( "Angle Z (d)" );
 
+    std::vector< float > eacc_x = csv_doc_.GetColumn< float >( "EarthAccelerometer X" );
+    std::vector< float > eacc_y = csv_doc_.GetColumn< float >( "EarthAccelerometer Y" );
+    std::vector< float > eacc_z = csv_doc_.GetColumn< float >( "EarthAccelerometer Z" );
+    
+    std::vector< float > vel_x = csv_doc_.GetColumn< float >( "Velocity X" );
+    std::vector< float > vel_y = csv_doc_.GetColumn< float >( "Velocity Y" );
+    std::vector< float > vel_z = csv_doc_.GetColumn< float >( "Velocity Z" );
+
     std::vector< float > pos_x = csv_doc_.GetColumn< float >( "Position X" );
     std::vector< float > pos_y = csv_doc_.GetColumn< float >( "Position Y" );
     std::vector< float > pos_z = csv_doc_.GetColumn< float >( "Position Z" );
@@ -957,6 +979,12 @@ void CrowdNavigation::read_in_csv( const std::string& filename )
         sensor_data.roll   = roll[ i ];
         sensor_data.pitch  = pitch[ i ];
         sensor_data.yaw    = yaw[ i ];
+        sensor_data.eacc_x  = pos_x[ i ];
+        sensor_data.eacc_y  = pos_y[ i ];
+        sensor_data.eacc_z  = pos_z[ i ];
+        sensor_data.vel_x  = pos_x[ i ];
+        sensor_data.vel_y  = pos_y[ i ];
+        sensor_data.vel_z  = pos_z[ i ];
         sensor_data.pos_x  = pos_x[ i ];
         sensor_data.pos_y  = pos_y[ i ];
         sensor_data.pos_z  = pos_z[ i ];

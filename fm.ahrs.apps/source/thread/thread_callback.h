@@ -18,23 +18,19 @@ struct sensor_device
 static void* read_sensor( void* arg )
 {
     struct sensor_device* pArg = ( struct sensor_device* )arg;
-    SENSOR_DB             prev_sensor_data;
-
-    memset( &prev_sensor_data, 0, sizeof( prev_sensor_data ) );
-    prev_sensor_data.time = Time::GetSystemTime();
+    int step = 0;
 
     while ( true )
     {
         std::string info = "Info:\n";
         SENSOR_DB   sensor_data;
-
+     
+        step++;
         memset( &sensor_data, 0, sizeof( sensor_data ) );
 
         // Run @ ODR 100Hz
-        size_t s  = pArg->sensor_data_queue->size_approx();
-        size_t st = ( s / 10 * 30 + 10 );
-        // std::cout << "Sleep time: " << st << " ms" << std::endl;
-        std::this_thread::sleep_for( std::chrono::milliseconds( st ) );
+        size_t s = pArg->sensor_data_queue->size_approx();
+        std::this_thread::sleep_for( std::chrono::microseconds( SAMPLE_RATE * 5 * 10) );
 
         sensor_data.time = Time::GetSystemTime();
         info += "Time: " + std::to_string( sensor_data.time ) + "\n";
@@ -91,11 +87,18 @@ static void* read_sensor( void* arg )
             continue;
         }
 
+        if (step % 2 != 0)
+        {
+            continue;
+        }
+        step = 0;
+
         pArg->ahrs_calculation->SolveAnCalculation( &sensor_data );
 
         info += "Quaternion: " + std::to_string( sensor_data.quate_x ) + " " + std::to_string( sensor_data.quate_y ) + " " + std::to_string( sensor_data.quate_z ) + " " + std::to_string( sensor_data.quate_w ) + "\n";
         info += "Roll: " + std::to_string( sensor_data.roll ) + " Pitch: " + std::to_string( sensor_data.pitch ) + " Yaw: " + std::to_string( sensor_data.yaw ) + "\n";
         info += "EAcc X: " + std::to_string( sensor_data.eacc_x ) + " EAcc Y: " + std::to_string( sensor_data.eacc_y ) + " EAcc Z: " + std::to_string( sensor_data.eacc_z ) + "\n";
+        info += "EAcc bias X: " + std::to_string( sensor_data.eacc_bias_x ) + " EAcc bias Y: " + std::to_string( sensor_data.eacc_bias_y ) + " EAcc bias Z: " + std::to_string( sensor_data.eacc_bias_z ) + "\n";
         info += "Vel X: " + std::to_string( sensor_data.vel_x ) + " Vel Y: " + std::to_string( sensor_data.vel_y ) + " Vel Z: " + std::to_string( sensor_data.vel_z ) + "\n";
         info += "Pos X: " + std::to_string( sensor_data.pos_x ) + " Pos Y: " + std::to_string( sensor_data.pos_y ) + " Pos Z: " + std::to_string( sensor_data.pos_z ) + "\n";
         info += "Queue size: " + std::to_string( pArg->sensor_data_queue->size_approx() ) + "\n";
@@ -105,7 +108,7 @@ static void* read_sensor( void* arg )
         // 生成数据
         pArg->sensor_data_queue->enqueue( sensor_data );
 
-        URHO3D_LOGINFO( info.c_str() );
+        //URHO3D_LOGINFO( info.c_str() );
     }
 
     //

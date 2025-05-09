@@ -8,6 +8,7 @@
 #include <Urho3D/Core/CoreEvents.h>
 #include <cctype>
 #include <iostream>
+#include <list>
 #include <string>
 //
 #define SAMPLE_RATE ( 100 )  // replace this with actual sample rate
@@ -35,6 +36,9 @@ struct SENSOR_DB
     float eacc_x;
     float eacc_y;
     float eacc_z;
+    float eacc_bias_x;
+    float eacc_bias_y;
+    float eacc_bias_z;
     float vel_x;
     float vel_y;
     float vel_z;
@@ -80,8 +84,10 @@ public:
     const FusionVector gyroscopeSensitivity      = { 1.0f, 1.0f, 1.0f };
     const FusionVector gyroscopeOffset           = { 0.0f, 0.0f, 0.0f };
     const FusionMatrix accelerometerMisalignment = { 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f };
+    //const FusionVector accelerometerSensitivity  = { 0.101938f, 0.101715f, 0.102024f };
     const FusionVector accelerometerSensitivity  = { 1.0f, 1.0f, 1.0f };
-    const FusionVector accelerometerOffset       = { 0.014f, 0.016f, 0.026f };
+    const FusionVector accelerometerOffset       = { -0.00494385f, -0.00185547f, 0.0249512f };
+    //const FusionVector accelerometerOffset       = { 0.0f, 0.0f, 0.0f };
     const FusionMatrix softIronMatrix            = { 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f };
     const FusionVector hardIronOffset            = { 0.0f, 0.0f, 0.0f };
 public:
@@ -100,4 +106,8 @@ public:
 
 public:
     void SolveAnCalculation( SENSOR_DB* sensor_data );
+
+private:
+    std::list<SENSOR_DB> recent_datas;
+    int average_size = 0;
 };
